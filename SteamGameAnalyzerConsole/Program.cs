@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using DotNetEnv;
 
 namespace SteamGameAnalyzerConsole
 {
@@ -14,16 +15,23 @@ namespace SteamGameAnalyzerConsole
 
         static async Task Main(string[] args)
         {
-            string apiKey = "***REMOVED-STEAM-API-KEY***";
-            string steamId = "76561198818174359";
+            Env.Load();
+            string? apiKey = Environment.GetEnvironmentVariable("STEAM_API_KEY");
+            string? steamId = Environment.GetEnvironmentVariable("STEAM_ID");
+
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(steamId))
+            {
+                Console.WriteLine("Missing STEAM_API_KEY or STEAM_ID. Create a .env file (see .env.example) with these values.");
+                return;
+            }
 
             CancellationTokenSource cts = new CancellationTokenSource();
             Console.CancelKeyPress += (sender, e) =>
             {
-                e.Cancel = true; 
+                e.Cancel = true;
                 Console.WriteLine("\nShutting down tracker...");
-                cts.Cancel(); 
-            }
+                cts.Cancel();
+            };
             Console.WriteLine("Starting background Steam tracker... Press CTRL+C to exit.\n");
 
             RecentGamesResult recentGames = await GetRecentGamesAsync(apiKey, steamId);
