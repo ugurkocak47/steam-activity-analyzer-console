@@ -10,7 +10,6 @@ namespace SteamGameAnalyzerConsole
 {
     internal class Program
     {
-        // Use one HttpClient for the whole application
         private static readonly HttpClient client = new HttpClient();
 
         static async Task Main(string[] args)
@@ -18,15 +17,13 @@ namespace SteamGameAnalyzerConsole
             string apiKey = "***REMOVED-STEAM-API-KEY***";
             string steamId = "76561198818174359";
 
-            // 1. Create ONE cancellation token for the whole app
             CancellationTokenSource cts = new CancellationTokenSource();
             Console.CancelKeyPress += (sender, e) =>
             {
-                e.Cancel = true; // Prevent instant crash
-                Console.WriteLine("\nShutting down tracker safely...");
-                cts.Cancel(); // Signal the loop to stop
-            };
-
+                e.Cancel = true; 
+                Console.WriteLine("\nShutting down tracker...");
+                cts.Cancel(); 
+            }
             Console.WriteLine("Starting background Steam tracker... Press CTRL+C to exit.\n");
 
             RecentGamesResult recentGames = await GetRecentGamesAsync(apiKey, steamId);
@@ -46,10 +43,10 @@ namespace SteamGameAnalyzerConsole
             catch (Exception err)
             {
                 Console.WriteLine($"EXCEPTION: {err.Message}");
-                return; // Exit safely if the initial fetch fails
+                return; 
             }
 
-            // 2. Pass the cancellation token to the MenuFunc
+
             while (!cts.Token.IsCancellationRequested)
             {
                 await MenuFunc(apiKey, steamId, recentGames, player, cts.Token);
@@ -58,7 +55,6 @@ namespace SteamGameAnalyzerConsole
 
         static async Task<RecentGamesResult> GetRecentGamesAsync(string apiKey, string steamId)
         {
-            // Corrected URL for Recently Played Games
             string url = $"https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={apiKey}&steamid={steamId}&format=json";
 
             try
@@ -78,7 +74,6 @@ namespace SteamGameAnalyzerConsole
 
         static async Task<bool> GetPlayerSummaryAsync(string apiKey, string steamId, RecentGamesResult recentGames)
         {
-            // URL for Player Summaries (requires 'steamids' plural)
             string url = $"https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={apiKey}&steamids={steamId}";
 
             try
@@ -89,12 +84,10 @@ namespace SteamGameAnalyzerConsole
                 string responseBody = await response.Content.ReadAsStringAsync();
                 PlayerSummaryResult? apiResult = JsonSerializer.Deserialize<PlayerSummaryResult>(responseBody);
 
-                // Safely grab the first player from the array
                 var player = apiResult?.Response?.Players?.FirstOrDefault();
 
                 if (player != null && !string.IsNullOrEmpty(player.GameId))
                 {
-                    // Steam returns GameId as a string, so we parse it to an int to match your RecentGames list
                     int activeAppId = int.Parse(player.GameId);
 
                     var activeGame = recentGames?.Response?.Games?.FirstOrDefault(g => g.AppId == activeAppId);
@@ -125,7 +118,6 @@ namespace SteamGameAnalyzerConsole
             }
         }
 
-        // Add CancellationToken token as the final parameter
         static async Task MenuFunc(string apiKey, string steamId, RecentGamesResult recentGames, SteamPlayer player, CancellationToken token)
         {
             RecentGamesResult currentRecent = recentGames;
@@ -133,11 +125,9 @@ namespace SteamGameAnalyzerConsole
             {
                 if (player != null)
                 {
-                    // Note: Ensure your SteamPlayer class actually has a 'Username' property mapped to "personaname"
                     Console.WriteLine($"\n\nSTEAM TRACKER \nUser Id: {steamId} \nUsername: {player.Username} \n\nSelect Function:\n1 - Show Recent Games List\n2 - Monitor Mode\n\n Press Ctrl + C to exit");
                     string? input = null;
 
-                    // A safer read loop that respects cancellation immediately
                     while (!token.IsCancellationRequested)
                     {
                         if (Console.KeyAvailable)
@@ -145,19 +135,16 @@ namespace SteamGameAnalyzerConsole
                             input = Console.ReadLine();
                             break;
                         }
-
-                        // Check every 100ms if Ctrl+C was hit while waiting
                         try
                         {
                             await Task.Delay(100, token);
                         }
                         catch (TaskCanceledException)
                         {
-                            return; // Exit the method immediately if cancelled
+                            return; 
                         }
                     }
 
-                    // If cancellation was requested during the wait, bail out
                     if (token.IsCancellationRequested) return;
 
                     switch (input)
@@ -174,13 +161,10 @@ namespace SteamGameAnalyzerConsole
                             break;
 
                         case "2":
-                            // REMOVED the duplicate CancellationTokenSource and Console.CancelKeyPress here!
-
                             try
                             {
                                 Console.WriteLine("\nEntering Monitor Mode...");
 
-                                // Use the token passed from Main
                                 while (!token.IsCancellationRequested)
                                 {
                                     Console.WriteLine($"\n[{DateTime.Now:HH:mm:ss}] Fetching data from Steam...");
@@ -196,7 +180,6 @@ namespace SteamGameAnalyzerConsole
                                     DateTime endTime = DateTime.Now.AddSeconds(60);
                                     bool exitMonitor = false;
 
-                                    // Use the token passed from Main
                                     while (DateTime.Now < endTime && !token.IsCancellationRequested)
                                     {
                                         if (Console.KeyAvailable && Console.ReadKey(intercept: true).Key == ConsoleKey.Escape)
@@ -216,7 +199,6 @@ namespace SteamGameAnalyzerConsole
                             }
                             catch (TaskCanceledException)
                             {
-                                // Safely catches the Ctrl+C interrupt during Task.Delay
                                 Console.WriteLine("\nMonitor mode interrupted by user.");
                             }
                             break;
