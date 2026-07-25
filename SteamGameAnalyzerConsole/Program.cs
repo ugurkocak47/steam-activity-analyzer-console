@@ -15,7 +15,7 @@ namespace SteamGameAnalyzerConsole
 
         static async Task Main(string[] args)
         {
-            Env.Load();
+            LoadEnvFile();
             string? apiKey = Environment.GetEnvironmentVariable("STEAM_API_KEY");
             string? steamId = Environment.GetEnvironmentVariable("STEAM_ID");
 
@@ -58,6 +58,21 @@ namespace SteamGameAnalyzerConsole
             while (!cts.Token.IsCancellationRequested)
             {
                 await MenuFunc(apiKey, steamId, recentGames, player, cts.Token);
+            }
+        }
+
+        static void LoadEnvFile()
+        {
+            DirectoryInfo? dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                string candidate = Path.Combine(dir.FullName, ".env");
+                if (File.Exists(candidate))
+                {
+                    Env.Load(candidate);
+                    return;
+                }
+                dir = dir.Parent;
             }
         }
 
