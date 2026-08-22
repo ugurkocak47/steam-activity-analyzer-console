@@ -25,6 +25,12 @@ namespace SteamGameAnalyzerConsole
                 return;
             }
 
+            //var newsTest = await GetNewsForAppAsync(apiKey, steamId, "440");
+            //foreach (var newsItem in newsTest.AppNews.NewsItems)
+            //{
+            //    Console.WriteLine($"News Item: {newsItem.Title} \n\nNews Content: {newsItem.Contents}");
+            //}
+
             CancellationTokenSource cts = new CancellationTokenSource();
             Console.CancelKeyPress += (sender, e) =>
             {
@@ -33,6 +39,8 @@ namespace SteamGameAnalyzerConsole
                 cts.Cancel();
             };
             Console.WriteLine("Starting background Steam tracker... Press CTRL+C to exit.\n");
+
+            //GetOwnedGames(apiKey, steamId);
 
             RecentGamesResult recentGames = await GetRecentGamesAsync(apiKey, steamId);
             SteamPlayer player = null;
@@ -51,7 +59,7 @@ namespace SteamGameAnalyzerConsole
             catch (Exception err)
             {
                 Console.WriteLine($"EXCEPTION: {err.Message}");
-                return; 
+                return;
             }
 
 
@@ -148,7 +156,7 @@ namespace SteamGameAnalyzerConsole
             {
                 if (player != null)
                 {
-                    Console.WriteLine($"\n\nSTEAM TRACKER \nUser Id: {steamId} \nUsername: {player.Username} \n\nSelect Function:\n1 - Show Recent Games List\n2 - Monitor Mode\n\n Press Ctrl + C to exit");
+                    Console.WriteLine($"\n\nSTEAM TRACKER \nUser Id: {steamId} \nUsername: {player.Username} \n\nSelect Function:\n1 - Show Recent Games List\n2 - Monitor Mode\n3 - Get All Owned Games\n\n Press Ctrl + C to exit");
                     string? input = null;
 
                     while (!token.IsCancellationRequested)
@@ -164,7 +172,7 @@ namespace SteamGameAnalyzerConsole
                         }
                         catch (TaskCanceledException)
                         {
-                            return; 
+                            return;
                         }
                     }
 
@@ -226,6 +234,47 @@ namespace SteamGameAnalyzerConsole
                             }
                             break;
 
+                            case "3":
+                            var ownedGames = await GetOwnedGames(apiKey, steamId);
+                            Console.WriteLine("\n1 - Select a game (Write the number of the game in the list)\n\nPress M to return to menu.");
+                            var subInput = Console.ReadLine();
+                            switch (subInput)
+                            {
+                                case "M" or "m":
+                                    break;
+                                default:
+                                    if (String.IsNullOrEmpty(subInput))
+                                    {
+                                        Console.WriteLine("Invalid input. Please try again.");
+                                        break;
+                                    }
+                                    try
+                                    {
+                                        int.Parse(subInput);
+                                        Console.WriteLine("1 - Get News for App\n2 - Get Achievement Information\n3 - Get Game Information\n4 - Return to Menu");
+                                        var subSubInput = Console.ReadLine();
+                                        switch (subSubInput) 
+                                        {
+                                            case "1":
+                                                var selectedGame = ownedGames.Response.Games[int.Parse(subInput) - 1];
+                                                var newsForApp = await GetNewsForAppAsync(apiKey, steamId, selectedGame.AppId.ToString());
+                                                Console.WriteLine($"\n--- News for {selectedGame.Name} ---");
+                                                foreach (var newsItem in newsForApp.AppNews.NewsItems)
+                                                {
+                                                    Console.WriteLine($"Title: {newsItem.Title}\nContent: {newsItem.Contents}\nDate: {newsItem.Date}\n\n");
+                                                }
+                                                break;
+                                        }
+                                    }
+                                    catch (Exception)
+                                    {
+
+                                        throw;
+                                    }
+                                    break;
+                            }
+                            break;
+
                         default:
                             Console.WriteLine("Wrong command input... Try Again...");
                             break;
@@ -237,7 +286,51 @@ namespace SteamGameAnalyzerConsole
                 Console.WriteLine($"EXCEPTION: {err.Message}");
             }
         }
-    }
+    
 
+        static async Task<NewsForAppResult> GetNewsForAppAsync(string apiKey, string steamId, string appId)
+        {
+            string url = $"https://api.steampowered.com/ISteamNews/GetNewsForApp/v0002/?appid={appId}&count=3&maxlength=300&format=json";
+            try
+            {
+                HttpResponseMessage response = await client.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                string responseBody = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<NewsForAppResult>(responseBody);
+            }
+            catch (HttpRequestException err)
+            {
+                Console.WriteLine($"News For App API Exception. Message: {err.Message}");
+                throw;
+            }
+            
+        }
+
+        static async Task<OwnedGamesResult> GetOwnedGames(string apiKey, string steamId)
+        {
+            string url = $"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={apiKey}&steamid={steamId}&include_appinfo=true&format=json";
+            try
+            {
+                HttpResponseMessage response = await client.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                string responseBody = await response.Content.ReadAsStringAsync();
+                var responseContent = JsonSerializer.Deserialize<OwnedGamesResult>(responseBody);
+
+                for (int i = 0; i < responseContent.Response.Games.Count; i++)
+                {
+                    var item = responseContent.Response.Games[i];
+                    Console.WriteLine($"{(i+1).ToString()} - AppId: {item.AppId}\nName: {item.Name}\nPlaytime Total: {item.PlaytimeTotal}\n\n");
+                }
+                return responseContent;
+            }
+            catch (HttpRequestException err)
+            {
+                Console.WriteLine($"Owned Games API Exception. Message: {err.Message}");
+                throw;
+            }
+        }
+    }
     
 }
