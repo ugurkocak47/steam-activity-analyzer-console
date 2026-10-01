@@ -6,6 +6,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using DotNetEnv;
+using SteamGameAnalyzerConsole.Helpers;
+using SteamGameAnalyzerConsole.Results;
 
 namespace SteamGameAnalyzerConsole
 {
@@ -234,46 +236,84 @@ namespace SteamGameAnalyzerConsole
                             }
                             break;
 
-                            case "3":
-                            var ownedGames = await GetOwnedGames(apiKey, steamId);
-                            Console.WriteLine("\n1 - Select a game (Write the number of the game in the list)\n\nPress M to return to menu.");
-                            var subInput = Console.ReadLine();
-                            switch (subInput)
-                            {
-                                case "M" or "m":
-                                    break;
-                                default:
-                                    if (String.IsNullOrEmpty(subInput))
-                                    {
-                                        Console.WriteLine("Invalid input. Please try again.");
-                                        break;
-                                    }
-                                    try
-                                    {
-                                        int.Parse(subInput);
-                                        Console.WriteLine("1 - Get News for App\n2 - Get Achievement Information\n3 - Get Game Information\n4 - Return to Menu");
-                                        var subSubInput = Console.ReadLine();
-                                        switch (subSubInput) 
-                                        {
-                                            case "1":
-                                                var selectedGame = ownedGames.Response.Games[int.Parse(subInput) - 1];
-                                                var newsForApp = await GetNewsForAppAsync(apiKey, steamId, selectedGame.AppId.ToString());
-                                                Console.WriteLine($"\n--- News for {selectedGame.Name} ---");
-                                                foreach (var newsItem in newsForApp.AppNews.NewsItems)
-                                                {
-                                                    Console.WriteLine($"Title: {newsItem.Title}\nContent: {newsItem.Contents}\nDate: {newsItem.Date}\n\n");
-                                                }
-                                                break;
-                                        }
-                                    }
-                                    catch (Exception)
-                                    {
+                        case "3":
+                        {
+                            var ownedGames = await GetOwnedGamesAsync(apiKey, steamId);
+                            var games = ownedGames?.Response?.Games ?? new List<OwnedGame>();
+                            var paginationHelper = new PaginationHelper<OwnedGame>(games, 10);
 
-                                        throw;
+                            if (games.Count == 0)
+                            {
+                                Console.WriteLine("No owned games were found.");
+                                break;
+                            }
+
+                            bool returnToMenu = false;
+                            while (!returnToMenu)
+                            {
+                                var paginatedGames = paginationHelper.Paginate().ToList();
+                                Console.WriteLine($"\n--- Owned Games (Page {paginationHelper.CurrentPage}/{paginationHelper.TotalPages}) ---");
+                                for (int i = 0; i < paginatedGames.Count; i++)
+                                {
+                                    Console.WriteLine($"{i + 1}. {paginatedGames[i].Name}");
+                                }
+
+                                Console.WriteLine("\nEnter a game number to select it, N for next page, P for previous page, or M to return to menu.");
+                                var subInput = Console.ReadLine()?.Trim();
+
+                                if (string.Equals(subInput, "M", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    returnToMenu = true;
+                                }
+                                else if (string.Equals(subInput, "N", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    if (paginationHelper.CurrentPage < paginationHelper.TotalPages)
+                                    {
+                                        paginationHelper.NextPage();
                                     }
-                                    break;
+                                    else
+                                    {
+                                        Console.WriteLine("You are already on the last page.");
+                                    }
+                                }
+                                else if (string.Equals(subInput, "P", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    if (paginationHelper.CurrentPage > 1)
+                                    {
+                                        paginationHelper.PreviousPage();
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("You are already on the first page.");
+                                    }
+                                }
+                                else if (int.TryParse(subInput, out int gameNumber) && gameNumber >= 1 && gameNumber <= paginatedGames.Count)
+                                {
+                                    var selectedGame = paginatedGames[gameNumber - 1];
+                                    Console.WriteLine("1 - Get News for App\n2 - Get Achievement Information\n3 - Get Game Information\n4 - Return to game list");
+                                    var subSubInput = Console.ReadLine();
+                                    switch (subSubInput)
+                                    {
+                                        case "1":
+                                            var newsForApp = await GetNewsForAppAsync(apiKey, steamId, selectedGame.AppId.ToString());
+                                            Console.WriteLine($"\n--- News for {selectedGame.Name} ---");
+                                            foreach (var newsItem in newsForApp.AppNews.NewsItems)
+                                            {
+                                                Console.WriteLine($"Title: {newsItem.Title}\nContent: {newsItem.Contents}\nDate: {newsItem.Date}\n\n");
+                                            }
+                                            break;
+                                            case "2":
+                                                await GetPlayerAchievementsForGame(apiKey,steamId,selectedGame.AppId.ToString());
+                                                break;
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine("Invalid input. Please enter a number on this page, N, P, or M.");
+                                }
                             }
                             break;
+                        }
 
                         default:
                             Console.WriteLine("Wrong command input... Try Again...");
@@ -307,7 +347,7 @@ namespace SteamGameAnalyzerConsole
             
         }
 
-        static async Task<OwnedGamesResult> GetOwnedGames(string apiKey, string steamId)
+        static async Task<OwnedGamesResult> GetOwnedGamesAsync(string apiKey, string steamId)
         {
             string url = $"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={apiKey}&steamid={steamId}&include_appinfo=true&format=json";
             try
@@ -317,17 +357,47 @@ namespace SteamGameAnalyzerConsole
 
                 string responseBody = await response.Content.ReadAsStringAsync();
                 var responseContent = JsonSerializer.Deserialize<OwnedGamesResult>(responseBody);
-
-                for (int i = 0; i < responseContent.Response.Games.Count; i++)
-                {
-                    var item = responseContent.Response.Games[i];
-                    Console.WriteLine($"{(i+1).ToString()} - AppId: {item.AppId}\nName: {item.Name}\nPlaytime Total: {item.PlaytimeTotal}\n\n");
-                }
-                return responseContent;
+                return responseContent!;
             }
             catch (HttpRequestException err)
             {
                 Console.WriteLine($"Owned Games API Exception. Message: {err.Message}");
+                throw;
+            }
+        }
+
+        static async Task GetPlayerAchievementsForGame(string apiKey, string steamId,string appId, string? lang="english")
+        {
+            string url = $"https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={appId}&key={apiKey}&steamid={steamId}&l={lang}";
+            try
+            {
+                HttpResponseMessage response = await client.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                string responseBody = await response.Content.ReadAsStringAsync();
+                var responseContent = JsonSerializer.Deserialize<GetAchievementInformationResult>(responseBody);
+                List<GameAchievement> achievements = responseContent!.PlayerStats.Achievements;
+
+                Console.WriteLine($"\n{responseContent.PlayerStats.GameName} Achievements:");
+                foreach (var item in achievements)
+                {
+                    string isAchieved;
+                    if (item.IsAchieved==1)
+                    {
+                        isAchieved = "Yes";
+                    }
+                    else
+                    {
+                        isAchieved = "No";
+                    }
+                    DateTimeOffset utcDate = DateTimeOffset.FromUnixTimeSeconds(item.UnlockDate);
+                    DateTime localDate = utcDate.LocalDateTime;
+                    Console.WriteLine($"\n{item.AchievementName}\nDescription: {item.AchievementDescription}\nAchieved:{isAchieved}\nUnlock Date:{localDate.ToString("dd-MM-yyyy")}" );
+                }
+            }
+            catch (HttpRequestException err)
+            {
+
                 throw;
             }
         }
