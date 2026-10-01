@@ -305,6 +305,9 @@ namespace SteamGameAnalyzerConsole
                                             case "2":
                                                 await GetPlayerAchievementsForGame(apiKey,steamId,selectedGame.AppId.ToString());
                                                 break;
+                                            default:
+                                                Console.WriteLine("Wrong input");
+                                                break;
                                     }
                                 }
                                 else
